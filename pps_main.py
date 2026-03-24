@@ -544,6 +544,25 @@ def generate_suggestion(status, analysis_flag, remark):
 
     return "ใช้งานได้"
 
+
+def find_ffplay_command() -> str:
+    candidates = [
+        'ffplay',
+        os.path.join(BASE_DIR, 'ffmpeg', 'bin', 'ffplay.exe'),
+        os.path.join(BASE_DIR, 'ffmpeg', 'ffplay.exe'),
+        os.path.join(BASE_DIR, 'bin', 'ffplay.exe'),
+        r'C:\ffmpeg\bin\ffplay.exe',
+    ]
+    for cmd in candidates:
+        try:
+            proc = subprocess.run([cmd, '-version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
+            if proc.returncode == 0:
+                return cmd
+        except Exception:
+            pass
+    return ''
+
+    
 class ScanWorker(QThread):
     progress = pyqtSignal(int, str)
     finished_scan = pyqtSignal(list, dict)
@@ -728,7 +747,7 @@ class DemucsWorker(QThread):
         self.finished_all.emit()
 
 
-class MainWindow(QMainWindow):
+class LibraryWidget(QWidget):
     def __init__(self):
         super().__init__()
         self.db = DB(DB_PATH)
@@ -832,14 +851,13 @@ class MainWindow(QMainWindow):
         '''
 
     def init_ui(self):
-        central = QWidget()
-        self.setCentralWidget(central)
-        main = QVBoxLayout(central)
+        main = QVBoxLayout(self)
         main.setContentsMargins(10, 8, 10, 10)
         main.setSpacing(6)
 
         self.tabs = QTabWidget()
         main.addWidget(self.tabs)
+
         self.tab_library = QWidget()
         self.tab_detail = QWidget()
         self.tab_lyrics = QWidget()
@@ -847,6 +865,7 @@ class MainWindow(QMainWindow):
         self.tab_karaoke = QWidget()
         self.tab_reports = QWidget()
         self.tab_settings = QWidget()
+
         self.tabs.addTab(self.tab_library, '🎵 Library')
         self.tabs.addTab(self.tab_detail, '🎧 Song Detail')
         self.tabs.addTab(self.tab_lyrics, '📝 Lyrics Sync')
@@ -1795,7 +1814,11 @@ class MainWindow(QMainWindow):
 
     def play_with_ffplay(self, path: str):
         self.stop_ffplay()
-        self.ffplay_proc = subprocess.Popen(['ffplay', '-nodisp', '-autoexit', '-loglevel', 'quiet', path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        cmd = find_ffplay_command()
+        if not cmd:
+            self.status_label.setText('ยังไม่พบ ffplay / FFmpeg ในระบบ')
+            return
+        self.ffplay_proc = subprocess.Popen([cmd, '-nodisp', '-autoexit', '-loglevel', 'quiet', path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.update_performance_status('Playing (ffplay)')
 
     def on_qt_player_error(self, *args):
@@ -1893,7 +1916,6 @@ class MainWindow(QMainWindow):
 
     def on_slider_pressed(self):
         self.is_slider_dragging = True
-
     def on_library_slider_released(self):
         self.is_slider_dragging = False
         if self.player: self.player.setPosition(self.library_seek_slider.value())
@@ -1940,7 +1962,6 @@ class MainWindow(QMainWindow):
         self.mute_state = not self.mute_state
         if self.player: self.player.setMuted(self.mute_state)
         self.library_mute_btn.setText('🔇' if self.mute_state else '🔊')
-
     def on_volume_changed(self, value: int):
         self.current_volume = value
         self.cfg['volume'] = value
@@ -1964,23 +1985,27 @@ class MainWindow(QMainWindow):
             pass
 
 
-def main():
-    app = QApplication(sys.argv)
-    app.setApplicationName(APP_TITLE)
-    app.setWindowIcon(get_app_icon())
-    splash = get_splash_pixmap()
-    if not splash.isNull():
-        from PyQt5.QtWidgets import QSplashScreen
-        sp = QSplashScreen(splash)
-        sp.show()
-        sp.showMessage('Loading interface...\nPreparing music library...\nInitializing performance tools...', Qt.AlignLeft | Qt.AlignTop, QColor('#eef3fa'))
-        app.processEvents(); time.sleep(1.5)
-    else:
-        sp = None
-    w = MainWindow(); w.show()
-    if sp: sp.finish(w)
-    sys.exit(app.exec_())
+# def main():
+#   app = QApplication(sys.argv)
+#   app.setApplicationName(APP_TITLE)
+#   app.setWindowIcon(get_app_icon())
+#   splash = get_splash_pixmap()
+#   if not splash.isNull():
+#       from PyQt5.QtWidgets import QSplashScreen
+#       sp = QSplashScreen(splash)
+#      sp.show()
+#       sp.showMessage('Loading interface...\nPreparing music library...\nInitializing performance tools...', Qt.AlignLeft | Qt.AlignTop, QColor('#eef3fa'))
+#       app.processEvents(); time.sleep(1.5)
+#   else:
+#       sp = None
+#   w = MainWindow(); w.show()
+#   if sp: sp.finish(w)
+#   sys.exit(app.exec_())
 
 
 if __name__ == '__main__':
-    main()
+    app = QApplication(sys.argv)
+    w = LibraryWidget()
+    w.show()
+    sys.exit(app.exec_())
+    
